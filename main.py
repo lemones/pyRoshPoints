@@ -2,6 +2,7 @@ import requests
 import json
 from datetime import datetime, timedelta
 from sys import argv
+import argparse
 import sqlite3 as sl
 
 # Rosh: 592b0d5610b3f73ce98ace4c
@@ -90,6 +91,9 @@ class db:
         self.con = sl.connect(self.db_name)
         self.c = self.con.cursor()
 
+    def disconnect(self):
+        self.c.close()
+
 
     def check_table(self):
         with self.con:
@@ -103,6 +107,7 @@ class db:
                     user TEXT
                 );
             """)
+        self.disconnect()
 
     def insert_db(self, name, points, watchtime, rank, user):
         sql_update = """UPDATE Channels SET name = ?, points = ?, watchtime = ?, rank = ?, user = ? WHERE name = ?"""
@@ -120,6 +125,7 @@ class db:
             else:
                 print("[-] {} Not found. Insert new row".format(name[0]))
                 self.con.executemany(sql_insert, data_insert)
+        self.disconnect()
 
 
     def del_row(self, name):
@@ -128,7 +134,14 @@ class db:
         data = [(name)]
         with self.con:
             self.con.execute(sql_del, data)
+        self.disconnect()
 
+    def update_all(self):
+        with self.con:
+            data = self.con.execute("SELECT name FROM Channels")
+            for row in data:
+                print(row[0])
+        self.disconnect()
 
     def print_db(self):
         with self.con:
@@ -141,13 +154,32 @@ class db:
                             row[3],
                             row[2])
                         )
+        self.disconnect()
 
 
-# str(argv[1])
-getdata = load(str(argv[1]), argv[2])
-getdata.init()
+def main():
+    parser = argparse.ArgumentParser(prog='main.py')
+    parser.add_argument('-u', help='username', required=True)
+    parser.add_argument('-c', help='channel', required=True)
+    parser.add_argument('-d', help='delete channel from database')
+    parser.add_argument('-o', help='update all')
+    args = parser.parse_args()
+    start(args.c, args.u)
 
-getdb = db("data.db")
-getdb.check_table()
-getdb.print_db()
-# getdb.del_row("VonDice")
+    if args.d:
+        getdb = db("data.db")
+        getdb.del_row(args.d)
+
+    if args.o:
+        getdb = db("data.db")
+        getdb.update_all()
+
+def start(argu, argc):
+    getdata = load(argu, argc)
+    getdata.init()
+
+    getdb = db("data.db")
+    getdb.check_table()
+    getdb.print_db()
+
+main()
