@@ -8,18 +8,37 @@ import sqlite3 as sl
 
 class load:
 
-    def __init__(self, master):
-        self.load_user = "mepparn" #str(argv[1])
-        self.sech = master
+    def __init__(self, chname, luser):
+        self.load_user = luser #str(argv[1])
+        self.channel_name = chname
 
-    def getid(self, cname):
+        self.db_name = 'data.db'
+        self.printout = 0
+
+        self.channel_id = 0
+        self.username = None
+        self.points = 0
+        self.pointsAlltime = 0
+        self.realtime = 0
+        self.rank = 0
+
+    def get_id(self, cname):
+        # Get id from channel name and call self.get_data with id value
+        # get values from get_data and insert or update sql database
         url = "https://api.streamelements.com/kappa/v2/channels/{}".format(cname)
         headers = {"Accept": "application/json"}
         response = requests.request("GET", url, headers=headers)
         j = json.loads(response.text)
-        self.chid = j['_id']
+        self.channel_id = j['_id']
+        self.channel_name = j['displayName']
 
-    def channel(self, cid):
+        self.get_data(self.channel_id)
+
+        getdb = db(self.db_name)
+        getdb.insert_db(j['displayName'], self.points, self.realtime, self.rank, self.username)
+
+
+    def get_data(self, cid):
         url = ("https://api.streamelements.com/kappa/v2/points/{}/{}".format(cid, self.load_user))
         headers = {"Accept": "application/json"}
         response = requests.request("GET", url, headers=headers)
@@ -27,13 +46,25 @@ class load:
         # Get realtime of watchtime (minutes) from self.convertminutes()
         realtime = self.convertminutes(j['watchtime'])
 
-        print("Username: {} \nPoints: {} \nATH: {} \nWatchtime: {} \nRank: {}".format(
-                    j['username'],
-                    j['points'],
-                    j['pointsAlltime'],
-                    realtime,
-                    j['rank'])
-                )
+        self.username = j['username']
+        self.points = j['points']
+        self.pointsAlltime = j['pointsAlltime']
+        self.realtime = realtime
+        self.rank = j['rank']
+
+        if (self.printout == 1):
+            self.print_data()
+        else:
+            return
+
+    def print_data(self):
+            print("Username: {} \nPoints: {} \nATH: {} \nWatchtime: {} \nRank: {}".format(
+                        self.username,
+                        self.points,
+                        self.pointsAlltime,
+                        self.realtime,
+                        self.rank)
+                    )
 
     def convertminutes(self, mins):
         # Convert the value from ['watchtime'] to human readable date (D:H:M)
@@ -45,8 +76,7 @@ class load:
         return realtime
 
     def init(self):
-        chid = self.getid(self.sech)
-        self.channel(self.chid)
+        self.get_id(self.channel_name)
 
 
 
@@ -54,39 +84,70 @@ class db:
 
     def __init__(self, master):
         self.db_name = "data.db"
+        self.connect()
 
     def connect(self):
-        con = sl.connect('data.db')
-        c = con.cursor()
+        self.con = sl.connect(self.db_name)
+        self.c = self.con.cursor()
+
 
     def check_table(self):
-        with con:
-            con.execute("""
-                CREATE TABLE CHANNEL (
+        with self.con:
+            self.con.execute("""
+                CREATE TABLE IF NOT EXISTS Channels (
                     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
                     name TEXT,
                     points INTEGER,
                     watchtime TEXT,
-                    rank TEXT
+                    rank TEXT,
+                    user TEXT
                 );
             """)
 
-        sql = 'INSERT INTO CHANNEL (id, name, points, watchtime, rank) values(?, ?, ?, ?, ?)'
-        data = [
-            (3, 'ROSHTEIN', j['points'], realtime, j['rank'])
-        ]
+    def insert_db(self, name, points, watchtime, rank, user):
+        sql_update = """UPDATE Channels SET name = ?, points = ?, watchtime = ?, rank = ?, user = ? WHERE name = ?"""
+        sql_insert = 'INSERT INTO Channels (id, name, points, watchtime, rank, user) values(?, ?, ?, ?, ?, ?)'
+        data_update = [(name, points, watchtime, rank, user, name)]
+        data_insert = [(None, name, points, watchtime, rank, user)]
 
-        with con:
-            con.executemany(sql, data)
+        with self.con:
+            # Update or insert depending if row with name exists.
+            for row in self.con.execute("SELECT name FROM Channels WHERE name=?", (name,)):
+                name = row
+                print("[-] {} Found. Updating existing row".format(name[0]))
+                self.con.executemany(sql_update, data_update)
+                break
+            else:
+                print("[-] {} Not found. Insert new row".format(name[0]))
+                self.con.executemany(sql_insert, data_insert)
+
+
+    def del_row(self, name):
+        print("Removing: {}".format(name))
+        sql_del = 'DELETE FROM Channels WHERE name=?'
+        data = [(name)]
+        with self.con:
+            self.con.execute(sql_del, data)
+
 
     def print_db(self):
-        with con:
-            data = con.execute("SELECT * FROM CHANNEL")
+        with self.con:
+            data = self.con.execute("SELECT * FROM Channels")
             for row in data:
-                print(row)
+                print("------{}------\nUsername: {}\nPoints: {}\nWatchtime: {}\nRank: {}".format(
+                            row[1],
+                            row[5],
+                            row[4],
+                            row[3],
+                            row[2])
+                        )
 
 
-
-
-getdata = load("roshtein")
+# str(argv[1])
+getdata = load(str(argv[1]), argv[2])
 getdata.init()
+
+getdb = db("data.db")
+getdb.check_table()
+getdb.print_db()
+# getdb.del_row("VonDice")
