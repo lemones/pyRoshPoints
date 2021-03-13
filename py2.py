@@ -162,7 +162,7 @@ class db:
 def main():
     parser = argparse.ArgumentParser(prog='main.py')
     parser.add_argument('-u', help='username', required=True)
-    parser.add_argument('-c', help='channel', required=True)
+    parser.add_argument('-c', help='channel', required=False)
     parser.add_argument('-d', help='delete channel from database')
     parser.add_argument('-o', help='update all')
     args = parser.parse_args()
