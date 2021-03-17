@@ -7,16 +7,25 @@ from sys import argv
 import argparse
 import sqlite3 as sl
 
-# Rosh: 592b0d5610b3f73ce98ace4c
+
+# -- Todo --
+# Change database rank from TEXT to INT so we can diff it easy
+#
+# --------------
+# -- Settings --
+twitch_username = "mepparn"
+twitch_channels = ["roshtein", "deuceace", "vondice"]
+data_file = "/home/lemones/.twitch_points.data"
+print_data = "sql" # sql/request
+
+total_points = 0
+# --------------
 
 class load:
 
     def __init__(self, chname, luser):
-        self.load_user = luser #str(argv[1])
+        self.load_user = luser
         self.channel_name = chname
-
-        self.db_name = 'data.db'
-        self.printout = 0
 
         self.channel_id = 0
         self.username = None
@@ -32,14 +41,11 @@ class load:
         headers = {"Accept": "application/json"}
         response = requests.request("GET", url, headers=headers)
         j = json.loads(response.text)
+
         self.channel_id = j['_id']
         self.channel_name = j['displayName']
 
         self.get_data(self.channel_id)
-
-        getdb = db(self.db_name)
-        getdb.insert_db(j['displayName'], self.points, self.realtime, self.rank, self.username)
-
 
     def get_data(self, cid):
         url = ("https://api.streamelements.com/kappa/v2/points/{}/{}".format(cid, self.load_user))
@@ -54,19 +60,24 @@ class load:
         self.pointsAlltime = j['pointsAlltime']
         self.realtime = realtime
         self.rank = j['rank']
+        global total_points
+        total_points += self.points
 
-        if (self.printout == 1):
+        if (self.print_data == "sql"):
+            print("yes")
+        elif (self.print_data == "request"):
             self.print_data()
         else:
             return
 
     def print_data(self):
-            print("Username: {} \nPoints: {} \nATH: {} \nWatchtime: {} \nRank: {}".format(
-                        self.username,
+            print("\033[1m\033[95m{}\033[0m\033[0m  \033[1mPoints:\033[0m {}\033[1m Rank:\033[0m {}\n{} \n".format(
+                        self.channel_name,
+                        #self.username,
                         self.points,
-                        self.pointsAlltime,
-                        self.realtime,
-                        self.rank)
+                        #self.pointsAlltime,
+                        self.rank,
+                        self.realtime)
                     )
 
     def convertminutes(self, mins):
@@ -75,113 +86,94 @@ class load:
         getdays = getwatchtime.days
         gethours = getwatchtime.seconds // 3600
         getminutes = (getwatchtime.seconds // 60) % 60
-        realtime = ("{} days {} hours {} minutes".format(getdays, gethours, getminutes))
+        realtime = ("\t\033[1m{}\033[0m days \033[1m{}\033[0m hours \033[1m{}\033[0m minutes".format(getdays, gethours, getminutes))
         return realtime
 
     def init(self):
         self.get_id(self.channel_name)
 
+        getdb = db(data_file)
+        # Get db_old values to diff
+        getdb.db_old(self.channel_name, self.points, self.rank)
+        # Update DB before print because of diff
+        getdb.db_update(self.channel_name, self.username, self.points, self.rank, self.realtime)
+        # Done. Let's print (diff code in db_print def)
+        getdb.db_print(self.channel_name)
 
 
+# DB
 class db:
 
     def __init__(self, master):
-        self.db_name = "data.db"
+
+        self.points_old = 0
+        self.rank_old = 0
+
         self.connect()
 
     def connect(self):
-        self.con = sl.connect(self.db_name)
+        self.con = sl.connect(data_file)
         self.c = self.con.cursor()
 
     def disconnect(self):
         self.c.close()
 
-
-    def check_table(self):
+    def db_old(self, channel_name, points, rank):
         with self.con:
-            self.con.execute("""
-                CREATE TABLE IF NOT EXISTS Channels (
-                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                    name TEXT,
-                    points INTEGER,
-                    watchtime TEXT,
-                    rank TEXT,
-                    user TEXT
-                );
-            """)
+            data = self.con.execute("SELECT points,rank FROM Channels where name=?", (channel_name,))
+            for row in data:
+                self.points_old = row[0]
+                self.rank_old = row[1]
         self.disconnect()
 
-    def insert_db(self, name, points, watchtime, rank, user):
-        sql_update = """UPDATE Channels SET name = ?, points = ?, watchtime = ?, rank = ?, user = ? WHERE name = ?"""
-        sql_insert = 'INSERT INTO Channels (id, name, points, watchtime, rank, user) values(?, ?, ?, ?, ?, ?)'
-        data_update = [(name, points, watchtime, rank, user, name)]
-        data_insert = [(None, name, points, watchtime, rank, user)]
-
+    def db_update(self, channel_name, username, points, rank, watchtime):
+        sql_script = """UPDATE Channels SET points=?, rank=?, watchtime=? WHERE name=?"""
+        sql_update = [(points, rank, watchtime, channel_name)]
         with self.con:
-            # Update or insert depending if row with name exists.
-            for row in self.con.execute("SELECT name FROM Channels WHERE name=?", (name,)):
-                name = row
-                print("[-] {} Found. Updating existing row".format(name[0]))
-                self.con.executemany(sql_update, data_update)
+            for row in self.con.execute("SELECT name FROM Channels WHERE name=?", (channel_name,)):
+                self.con.executemany(sql_script, sql_update)
                 break
             else:
-                print("[-] {} Not found. Insert new row".format(name[0]))
-                self.con.executemany(sql_insert, data_insert)
+                return
         self.disconnect()
 
-
-    def del_row(self, name):
-        print("Removing: {}".format(name))
-        sql_del = 'DELETE FROM Channels WHERE name=?'
-        data = [(name)]
+    def db_print(self, channel_name):
         with self.con:
-            self.con.execute(sql_del, data)
-        self.disconnect()
-
-    def update_all(self):
-        with self.con:
-            data = self.con.execute("SELECT name FROM Channels")
+            data = self.con.execute("SELECT name,points,rank,watchtime FROM Channels WHERE name=?", (channel_name,))
             for row in data:
-                print(row[0])
-        self.disconnect()
 
-    def print_db(self):
-        with self.con:
-            data = self.con.execute("SELECT * FROM Channels")
-            for row in data:
-                print("------{}------\nUsername: {}\nPoints: {}\nWatchtime: {}\nRank: {}".format(
-                            row[1],
-                            row[5],
+                # Check diff of points
+                points_diff = row[1] - self.points_old
+                if points_diff >= 0:
+                    if points_diff == 0:
+                        points_diff_v = ""
+                    else:
+                        points_diff_v = "+"
+                else:
+                    points_diff_v = "-"
+
+
+                print("\033[1m\033[95m{}\033[0m\033[0m  \033[1mPoints:\033[0m {}({}{})\033[1m Rank:\033[0m {}\n{} \n".format(
+                            row[0],
+                            row[1], points_diff_v, points_diff,
                             row[2],
-                            row[3],
-                            row[4])
+                            row[3])
                         )
         self.disconnect()
 
 
+# -- Start --
 def main():
-    parser = argparse.ArgumentParser(prog='main.py')
-    parser.add_argument('-u', help='username', required=True)
-    parser.add_argument('-c', help='channel', required=False)
-    parser.add_argument('-d', help='delete channel from database')
-    parser.add_argument('-o', help='update all')
-    args = parser.parse_args()
-    start(args.c, args.u)
+    for i in twitch_channels:
+        start(i, twitch_username)
 
-    if args.d:
-        getdb = db("data.db")
-        getdb.del_row(args.d)
-
-    if args.o:
-        getdb = db("data.db")
-        getdb.update_all()
+    print("\033[1mTotal:\033[0m {}".format(total_points))
 
 def start(argu, argc):
     getdata = load(argu, argc)
     getdata.init()
+# -----------
 
-    getdb = db("data.db")
-    getdb.check_table()
-    getdb.print_db()
 
-main()
+if __name__ == "__main__":
+    main()
