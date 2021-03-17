@@ -3,23 +3,29 @@
 import requests
 import json
 from datetime import datetime, timedelta
-from sys import argv
-import argparse
 import sqlite3 as sl
 
-
 # -- Todo --
-# Change database rank from TEXT to INT so we can diff it easy
+# 
+# : db class is a big mess.
+# O (Removed print_data completely) print_data need to be in a def?
+# O (Removed Option. Only SQL now) Option of sql/request needed? Why not only use sqlite?
+# : Change database rank from TEXT to INT so we can diff it without int()
+# : Lots of vars that is not needed
+# : What if data_file is missing? Or the SQL table is not set?
+# : Error check on request twitch_channels to avoid errors if 404 or other err code is True
+# : realtime in convertminutes() should be colored in print, not have it stored in db
 #
 # --------------
 # -- Settings --
 twitch_username = "mepparn"
 twitch_channels = ["roshtein", "deuceace", "vondice"]
 data_file = "/home/lemones/.twitch_points.data"
-print_data = "sql" # sql/request
-
+#
+# -- Globals --
 total_points = 0
 # --------------
+#
 
 class load:
 
@@ -27,12 +33,6 @@ class load:
         self.load_user = luser
         self.channel_name = chname
 
-        self.channel_id = 0
-        self.username = None
-        self.points = 0
-        self.pointsAlltime = 0
-        self.realtime = 0
-        self.rank = 0
 
     def get_id(self, cname):
         # Get id from channel name and call self.get_data with id value
@@ -63,22 +63,6 @@ class load:
         global total_points
         total_points += self.points
 
-        if (self.print_data == "sql"):
-            print("yes")
-        elif (self.print_data == "request"):
-            self.print_data()
-        else:
-            return
-
-    def print_data(self):
-            print("\033[1m\033[95m{}\033[0m\033[0m  \033[1mPoints:\033[0m {}\033[1m Rank:\033[0m {}\n{} \n".format(
-                        self.channel_name,
-                        #self.username,
-                        self.points,
-                        #self.pointsAlltime,
-                        self.rank,
-                        self.realtime)
-                    )
 
     def convertminutes(self, mins):
         # Convert the value from ['watchtime'] to human readable date (D:H:M)
@@ -97,7 +81,7 @@ class load:
         getdb.db_old(self.channel_name, self.points, self.rank)
         # Update DB before print because of diff
         getdb.db_update(self.channel_name, self.username, self.points, self.rank, self.realtime)
-        # Done. Let's print (diff code in db_print def)
+        # Done. Let's print
         getdb.db_print(self.channel_name)
 
 
@@ -105,10 +89,6 @@ class load:
 class db:
 
     def __init__(self, master):
-
-        self.points_old = 0
-        self.rank_old = 0
-
         self.connect()
 
     def connect(self):
@@ -142,25 +122,31 @@ class db:
             data = self.con.execute("SELECT name,points,rank,watchtime FROM Channels WHERE name=?", (channel_name,))
             for row in data:
 
-                # Check diff of points
-                points_diff = row[1] - self.points_old
-                if points_diff >= 0:
-                    if points_diff == 0:
-                        points_diff_v = ""
-                    else:
-                        points_diff_v = "+"
-                else:
-                    points_diff_v = "-"
+                # reurn diff with colors self.diff_this(value1, value2)
+                diff_points = self.diff_this(row[1], self.points_old)
+                diff_rank = self.diff_this(row[2], self.rank_old)
 
-
-                print("\033[1m\033[95m{}\033[0m\033[0m  \033[1mPoints:\033[0m {}({}{})\033[1m Rank:\033[0m {}\n{} \n".format(
+                print("\033[1m\033[95m{}\033[0m\033[0m  \033[1mPoints:\033[0m {}{}\033[1m Rank:\033[0m {}{}\n{} \n".format(
                             row[0],
-                            row[1], points_diff_v, points_diff,
-                            row[2],
+                            row[1], diff_points,
+                            row[2], diff_rank,
                             row[3])
                         )
         self.disconnect()
 
+    def diff_this(self, of, to):
+        diff = int(of) - int(to)
+        diff_v = None
+
+        if diff >= 0:
+            if diff == 0:
+                diff_v = ""
+            else:
+                diff_v = "\033[1m(\033[0m\033[92m+\033[0m{}\033[1m)\033[0m".format(diff)
+        else:
+            diff_v = "\033[1m(\033[0m\033[91m-\033[0m{}\033[1m)\033[0m".format(diff)
+
+        return("{}".format(diff_v))
 
 # -- Start --
 def main():
