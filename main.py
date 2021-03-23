@@ -8,12 +8,12 @@ import sqlite3 as sl
 # -- Todo --
 # 
 # : db class is a big mess.
-# : Make it work for Windows users
-# : Change database rank from TEXT to INT so we can diff it without int()
+# : Make it work for Windows users (not prior)
+# : Change database rank from TEXT to INT so we can diff it without int() it
 # : Lots of vars that is not needed
 # : What if data_file is missing? Or the SQL table is not set?
-# : Error check on request twitch_channels to avoid errors if 404 or other err code is True
 # : realtime in convertminutes() should be colored in print, not have it stored in db
+# O (statusCode check) Error check on request twitch_channels to avoid errors if 404 or if other err code is True
 # O (Removed print_data completely) print_data need to be in a def?
 # O (Removed Option. Only SQL now) Option of sql/request needed? Why not only use sqlite?
 # 
@@ -43,6 +43,11 @@ class load:
         response = requests.request("GET", url, headers=headers)
         j = json.loads(response.text)
 
+        # if statusCode is avaible, there is an error
+        if 'statusCode' in j:
+            print("Error: {}".format(j['message']))
+            exit()
+
         self.channel_id = j['_id']
         self.channel_name = j['displayName']
 
@@ -53,9 +58,14 @@ class load:
         headers = {"Accept": "application/json"}
         response = requests.request("GET", url, headers=headers)
         j = json.loads(response.text)
+
+        # if statusCode is avaible, there is an error
+        if 'statusCode' in j:
+            print("Error: {}".format(j['message']))
+            exit()
+
         # Get realtime of watchtime (minutes) from self.convertminutes()
         realtime = self.convertminutes(j['watchtime'])
-
         self.username = j['username']
         self.points = j['points']
         self.pointsAlltime = j['pointsAlltime']
@@ -63,7 +73,6 @@ class load:
         self.rank = j['rank']
         global total_points
         total_points += self.points
-
 
     def convertminutes(self, mins):
         # Convert the value from ['watchtime'] to human readable date (D:H:M)
