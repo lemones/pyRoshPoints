@@ -34,7 +34,6 @@ class load:
         self.load_user = luser
         self.channel_name = chname
 
-
     def get_id(self, cname):
         # Get id from channel name and call self.get_data with id value
         # get values from get_data and insert or update sql database
@@ -42,8 +41,6 @@ class load:
         headers = {"Accept": "application/json"}
         response = requests.request("GET", url, headers=headers)
         j = json.loads(response.text)
-
-        # if statusCode is avaible, there is an error
         if 'statusCode' in j:
             print("Error: {}".format(j['message']))
             exit()
@@ -58,18 +55,14 @@ class load:
         headers = {"Accept": "application/json"}
         response = requests.request("GET", url, headers=headers)
         j = json.loads(response.text)
-
-        # if statusCode is avaible, there is an error
         if 'statusCode' in j:
             print("Error: {}".format(j['message']))
             exit()
 
-        # Get realtime of watchtime (minutes) from self.convertminutes()
-        realtime = self.convertminutes(j['watchtime'])
         self.username = j['username']
         self.points = j['points']
         self.pointsAlltime = j['pointsAlltime']
-        self.realtime = realtime
+        self.realtime = self.convertminutes(j['watchtime'])
         self.rank = j['rank']
         global total_points
         total_points += self.points
@@ -95,7 +88,6 @@ class load:
         getdb.db_print(self.channel_name)
 
 
-# DB
 class db:
 
     def __init__(self, master):
@@ -131,15 +123,10 @@ class db:
         with self.con:
             data = self.con.execute("SELECT name,points,rank,watchtime FROM Channels WHERE name=?", (channel_name,))
             for row in data:
-
-                # reurn diff with colors self.diff_this(value1, value2)
-                diff_points = self.diff_this(row[1], self.points_old)
-                diff_rank = self.diff_this(row[2], self.rank_old)
-
                 print("\033[1m\033[95m{}\033[0m\033[0m  \033[1mPoints:\033[0m {}{}\033[1m Rank:\033[0m {}{}\n{} \n".format(
                             row[0],
-                            row[1], diff_points,
-                            row[2], diff_rank,
+                            row[1], self.diff_this(row[1], self.points_old),
+                            row[2], self.diff_this(row[2], self.rank_old),
                             row[3]))
         self.disconnect()
 
