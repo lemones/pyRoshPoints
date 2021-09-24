@@ -6,13 +6,13 @@ from datetime import datetime, timedelta
 import sqlite3 as sl
 
 # -- Todo --
-# 
 # : db class is a big mess.
 # : Make it work for Windows users (not prior)
-# : Change database rank from TEXT to INT so we can diff it without int() it
+# : Change database rank from TEXT to INT so we can diff it without int()'ing it
 # : Lots of vars that is not needed
 # : What if data_file is missing? Or the SQL table is not set?
 # : realtime in convertminutes() should be colored in print, not have it stored in db
+#   I have set up self.realtime_clean for future fix.
 # O (statusCode check) Error check on request twitch_channels to avoid errors if 404 or if other err code is True
 # O (Removed print_data completely) print_data need to be in a def?
 # O (Removed Option. Only SQL now) Option of sql/request needed? Why not only use sqlite?
@@ -21,22 +21,21 @@ import sqlite3 as sl
 # -- Settings --
 twitch_username = "mepparn"
 twitch_channels = ["roshtein", "deuceace", "vondice"]
-data_file = "/home/lemones/.twitch_points.data"
-#
+data_file = "./data.db"
+# --------------
 # -- Globals --
 total_points = 0
-# --------------
-#
+realtime_clean = 0
+
 
 class load:
 
     def __init__(self, chname, luser):
         self.load_user = luser
         self.channel_name = chname
+        self.realtime_clean = 0
 
     def get_id(self, cname):
-        # Get id from channel name and call self.get_data with id value
-        # get values from get_data and insert or update sql database
         url = "https://api.streamelements.com/kappa/v2/channels/{}".format(cname)
         headers = {"Accept": "application/json"}
         response = requests.request("GET", url, headers=headers)
@@ -47,7 +46,7 @@ class load:
 
         self.channel_id = j['_id']
         self.channel_name = j['displayName']
-
+        # Call get_data with channel _id
         self.get_data(self.channel_id)
 
     def get_data(self, cid):
@@ -69,16 +68,16 @@ class load:
 
     def convertminutes(self, mins):
         # Convert the value from ['watchtime'] to human readable date (D:H:M)
+        # Could have months also, but different days per month gives a less accurate total watchtime.
         getwatchtime = timedelta(minutes=mins)
         getdays = getwatchtime.days
         gethours = getwatchtime.seconds // 3600
         getminutes = (getwatchtime.seconds // 60) % 60
-        realtime = ("\t\033[1m{}\033[0m days \033[1m{}\033[0m hours \033[1m{}\033[0m minutes".format(getdays, gethours, getminutes))
-        return realtime
+        self.realtime_clean = ("{} days {} hours {} minutes".format(getdays, gethours, getminutes))
+        return "\t\033[1m{}\033[0m days \033[1m{}\033[0m hours \033[1m{}\033[0m minutes".format(getdays, gethours, getminutes)
 
     def init(self):
         self.get_id(self.channel_name)
-
         getdb = db(data_file)
         # Get db_old values to diff
         getdb.db_old(self.channel_name, self.points, self.rank)
@@ -116,12 +115,20 @@ class db:
                 self.con.executemany(sql_script, sql_update)
                 break
             else:
+                send_t = (channel_name, username, points, rank, watchtime)
+                self.db_add(send_t)
                 return
         self.disconnect()
 
+    def db_add(self, this):
+        sql_script = """INSERT INTO Channels (name, user, points, rank, watchtime)
+                        VALUES(?,?,?,?,?)"""
+        self.con.execute(sql_script, this)
+
+
     def db_print(self, channel_name):
         with self.con:
-            data = self.con.execute("SELECT name,points,rank,watchtime FROM Channels WHERE name=?", (channel_name,))
+            data = self.con.execute("SELECT name, points, rank, watchtime FROM Channels WHERE name=?", (channel_name,))
             for row in data:
                 print("\033[1m\033[95m{}\033[0m\033[0m  \033[1mPoints:\033[0m {}{}\033[1m Rank:\033[0m {}{}\n{} \n".format(
                             row[0],
@@ -141,21 +148,11 @@ class db:
                 diff_v = "\033[1m(\033[0m\033[92m+\033[0m{}\033[1m)\033[0m".format(abs(diff))
         else:
             diff_v = "\033[1m(\033[0m\033[91m-\033[0m{}\033[1m)\033[0m".format(abs(diff))
-
         return("{}".format(diff_v))
-
-# -- Start --
-def main():
-    for i in twitch_channels:
-        start(i, twitch_username)
-
-    print("\033[1mTotal:\033[0m {}".format(total_points))
-
-def start(argu, argc):
-    getdata = load(argu, argc)
-    getdata.init()
-# -----------
 
 
 if __name__ == "__main__":
-    main()
+    for i in twitch_channels:
+        getdata = load(i, twitch_username)
+        getdata.init()
+    print("\033[1mTotal:\033[0m {}".format(total_points))
