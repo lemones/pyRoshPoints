@@ -1,9 +1,10 @@
 #!/bin/env python3
 
-import requests
+import sys
 import json
 from datetime import datetime, timedelta
 import sqlite3 as sl
+import requests
 
 # -- Todo --
 # : db class is a big mess.
@@ -16,7 +17,7 @@ import sqlite3 as sl
 # O (statusCode check) Error check on request twitch_channels to avoid errors if 404 or if other err code is True
 # O (Removed print_data completely) print_data need to be in a def?
 # O (Removed Option. Only SQL now) Option of sql/request needed? Why not only use sqlite?
-# 
+#
 # --------------
 # -- Settings --
 twitch_username = "mepparn"
@@ -26,6 +27,12 @@ data_file = "./data.db"
 # -- Globals --
 total_points = 0
 realtime_clean = 0
+
+try:
+    get_arg = sys.argv[1]
+    twitch_username = get_arg
+except IndexError:
+    pass
 
 
 class load:
