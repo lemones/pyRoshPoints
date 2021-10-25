@@ -8,10 +8,11 @@ import requests
 
 # -- Todo --
 # : db class is a big mess.
+# : Calls for other def's should not been made inside a def.
 # : Make it work for Windows users (not prior)
-# : Change database rank from TEXT to INT so we can diff it without int()'ing it
+# : Change database rank from TEXT to INT so we can diff it without int()'ing it?
 # : Lots of vars that is not needed
-# : What if data_file is missing? Or the SQL table is not set?
+# : What if data_file is missing? Or the SQL table is not set? A construct in db would be good.
 # : realtime in convertminutes() should be colored in print, not have it stored in db
 #   I have set up self.realtime_clean for future fix.
 # O (statusCode check) Error check on request twitch_channels to avoid errors if 404 or if other err code is True
@@ -35,7 +36,7 @@ except IndexError:
     pass
 
 
-class load:
+class Load:
 
     def __init__(self, chname, luser):
         self.load_user = luser
@@ -87,7 +88,7 @@ class load:
         self.get_id(self.channel_name)
         getdb = db(data_file)
         # Get db_old values to diff
-        getdb.db_old(self.channel_name, self.points, self.rank)
+        getdb.db_old(self.channel_name, self.points, self.rank, self.username)
         # Update DB before print because of diff
         getdb.db_update(self.channel_name, self.username, self.points, self.rank, self.realtime)
         # Done. Let's print
@@ -98,6 +99,8 @@ class db:
 
     def __init__(self, master):
         self.connect()
+        self.points_old = 0
+        self.rank_old = 0
 
     def connect(self):
         self.con = sl.connect(data_file)
@@ -106,19 +109,19 @@ class db:
     def disconnect(self):
         self.c.close()
 
-    def db_old(self, channel_name, points, rank):
+    def db_old(self, channel_name, points, rank, username):
         with self.con:
-            data = self.con.execute("SELECT points,rank FROM Channels where name=?", (channel_name,))
+            data = self.con.execute("SELECT points,rank FROM Channels where name=? AND user=?", (channel_name, username))
             for row in data:
                 self.points_old = row[0]
                 self.rank_old = row[1]
         self.disconnect()
 
     def db_update(self, channel_name, username, points, rank, watchtime):
-        sql_script = """UPDATE Channels SET points=?, rank=?, watchtime=? WHERE name=?"""
-        sql_update = [(points, rank, watchtime, channel_name)]
+        sql_script = """UPDATE Channels SET points=?, rank=?, watchtime=?, name=?, user=? WHERE name=? AND user=?"""
+        sql_update = [(points, rank, watchtime, channel_name, username, channel_name, username)]
         with self.con:
-            for row in self.con.execute("SELECT name FROM Channels WHERE name=?", (channel_name,)):
+            for row in self.con.execute("SELECT name FROM Channels WHERE name=? AND user=?", (channel_name, username,)):
                 self.con.executemany(sql_script, sql_update)
                 break
             else:
@@ -128,14 +131,14 @@ class db:
         self.disconnect()
 
     def db_add(self, this):
-        sql_script = """INSERT INTO Channels (name, user, points, rank, watchtime)
+        sql_script = """INSERT OR REPLACE INTO Channels (name, user, points, rank, watchtime)
                         VALUES(?,?,?,?,?)"""
         self.con.execute(sql_script, this)
 
 
-    def db_print(self, channel_name):
+    def db_print(self, channel_name, username=twitch_username):
         with self.con:
-            data = self.con.execute("SELECT name, points, rank, watchtime FROM Channels WHERE name=?", (channel_name,))
+            data = self.con.execute("SELECT name, points, rank, watchtime, user FROM Channels WHERE name=? AND user=?", (channel_name, username))
             for row in data:
                 print("\033[1m\033[95m{}\033[0m\033[0m  \033[1mPoints:\033[0m {}{}\033[1m Rank:\033[0m {}{}\n{} \n".format(
                             row[0],
@@ -160,6 +163,6 @@ class db:
 
 if __name__ == "__main__":
     for i in twitch_channels:
-        getdata = load(i, twitch_username)
+        getdata = Load(i, twitch_username)
         getdata.init()
     print("\033[1mTotal:\033[0m {}".format(total_points))
