@@ -9,6 +9,7 @@ import requests
 
 # Todo:
 # - Save channel id to db and if exist don't request API to reduce calls.
+# - Add 24h timer to compare points for the last 24h. Heavy stuff.
 #   Will however make one extra SQL connection. Can I get id without that extra sql?
 # - Instead of global var's, create a list or dict instead. (list is faster?)
 # - db->db_points is called 6 times per channel request. No idea why?
@@ -18,7 +19,7 @@ import requests
 # - Calls to function inside class would be better in __main__ instead from within the class
 
 username = "mepparn"
-channels = [ "roshtein", "deuceace", "vondice", "pressplayttv" ]
+channels = [ "roshtein", "deuceace", "vondice", "frankdimes" ]
 data_file = "data.db"
 
 # Globals (this is to messy)
